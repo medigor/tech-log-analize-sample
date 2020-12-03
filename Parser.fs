@@ -9,14 +9,14 @@ type Event1C = {
     Date: DateTime
     Duration: TimeSpan
     Name: string
-    Level: uint32
-    Properties: array<string * string> } 
+    Level: int
+    Properties: array<struct(string * string)> } 
     with 
     override this.ToString() =
         let date = this.Date.ToString("dd.MM.yyyy HH:mm:ss.ffffff") 
         sprintf "%s-%i,%s" date (this.Duration.Ticks / 10L) this.Name
     member this.TryGetProperty name =
-        match Array.tryFind (fun (k,v) -> k = name) this.Properties with
+        match Array.tryFind (fun struct(k,v) -> k = name) this.Properties with
         | Some (k,v) -> Some v
         | _ -> None
 
@@ -70,25 +70,25 @@ module Parser =
     let parse(date: DateTime, sr: StreamReader, buffer: StringBuilder): Event1C =
         let mutable endOfLine = false
 
-        let minutes = readToDelimiter(sr, ':', buffer, &endOfLine)
-        let seconds = readToDelimiter(sr, '.', buffer, &endOfLine)
-        let microSeconds = readToDelimiter(sr, '-', buffer, &endOfLine)
-        let duration = readToDelimiter(sr, ',', buffer, &endOfLine)
+        let minutes = readToDelimiter(sr, ':', buffer, &endOfLine) |> Int32.Parse
+        let seconds = readToDelimiter(sr, '.', buffer, &endOfLine) |> Int32.Parse
+        let microSeconds = readToDelimiter(sr, '-', buffer, &endOfLine) |> Int32.Parse
+        let duration = readToDelimiter(sr, ',', buffer, &endOfLine) |> Int64.Parse
         let name = readToDelimiter(sr, ',', buffer, &endOfLine).ToUpper()
-        let level = readToDelimiter(sr, ',', buffer, &endOfLine)
+        let level = readToDelimiter(sr, ',', buffer, &endOfLine) |> Int32.Parse
 
         let properties = [|
             while (not endOfLine && not sr.EndOfStream) do
                 let name = readToDelimiter(sr, '=', buffer, &endOfLine)
                 let value = readToDelimiter(sr, ',', buffer, &endOfLine)
-                name, value
+                struct(name, value)
         |]
 
         {
             Date = date.AddMinutes(float minutes).AddSeconds(float seconds).AddTicks((int64 microSeconds) * 10L) 
-            Duration = TimeSpan.FromTicks(int64 duration * 10L)
+            Duration = TimeSpan.FromTicks(duration * 10L)
             Name = name
-            Level = uint32 level
+            Level = level
             Properties = properties
         }
 
@@ -99,10 +99,10 @@ module Parser =
                 FileNotFoundException(fileName) |> raise
             if not (Regex.IsMatch(info.Name, @"\d{8}\.log$")) then
                 ArgumentException("Invalid format filename") |> raise
-            let year = 2000 + (int (info.Name.Substring(0, 2)))
-            let month = int (info.Name.Substring(2, 2))
-            let day = int (info.Name.Substring(4, 2))
-            let hour = int (info.Name.Substring(6, 2))
+            let year = 2000 + (Int32.Parse(info.Name.AsSpan().Slice(0, 2)))
+            let month = Int32.Parse (info.Name.AsSpan().Slice(2, 2))
+            let day = Int32.Parse (info.Name.AsSpan().Slice(4, 2))
+            let hour = Int32.Parse (info.Name.AsSpan().Slice(6, 2))
             let date = DateTime(year, month, day, hour, 0, 0)
             let buffer = StringBuilder(4096 * 128)
             use fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
